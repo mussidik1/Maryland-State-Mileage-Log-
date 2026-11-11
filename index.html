@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mileage Log</title>
+<meta name="description" content="Fill out the State of Maryland Vehicle Mileage Log on your phone. Your log stays on your device.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef1f4">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1520">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mileage Log">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+@font-face { font-family: 'Manrope'; font-style: normal; font-weight: 400; font-display: swap; src: url(fonts/manrope-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Manrope'; font-style: normal; font-weight: 500; font-display: swap; src: url(fonts/manrope-latin-500-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Manrope'; font-style: normal; font-weight: 600; font-display: swap; src: url(fonts/manrope-latin-600-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Manrope'; font-style: normal; font-weight: 700; font-display: swap; src: url(fonts/manrope-latin-700-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Manrope'; font-style: normal; font-weight: 800; font-display: swap; src: url(fonts/manrope-latin-800-normal.woff2) format('woff2'); }
+:root {
+  /* Fleet logbook: navy ink on cool paper; Maryland gold marks the one primary action. One soft rounded face (Manrope) throughout, tabular figures for mileage. Single column, phone first. */
+  --paper: #eef1f4;
+  --card: #ffffff;
+  --ink: #13213a;
+  --muted: #5c677a;
+  --line: #d6dce4;
+  --accent: #e2a523;
+  --accent-ink: #1c1400;
+  --warn: #b42318;
+  --ok: #1d7a46;
+  --chip: #e5eaf1;
+  --display: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --body: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e1520; --card: #162030; --ink: #e7ecf4; --muted: #98a4b6; --line: #2a3749;
+    --accent: #efb43a; --accent-ink: #1c1400; --warn: #ff8072; --ok: #52c58d; --chip: #213045;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 500 16px/1.5 var(--body); -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; }
+main { max-width: 580px; margin: 0 auto; padding: 16px 16px 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 800; letter-spacing: -.015em; margin: 0; text-wrap: balance; }
+h1 { font-size: 28px; line-height: 1.1; }
+h2 { font-size: 19px; font-weight: 700; }
+p { margin: 0; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.opt { color: var(--muted); font-weight: 500; }
+.hidden { display: none !important; }
+
+/* Header */
+.top { display: grid; gap: 4px; }
+.vehicle { font: 700 12px/1.2 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.lead { color: var(--muted); font-size: 15px; margin-top: 6px; }
+.monthbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.monthbar .name { font: 800 22px/1 var(--display); letter-spacing: -.015em; }
+.navbtn { width: 44px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); font-size: 22px; line-height: 1; }
+.navbtn:disabled { opacity: .35; cursor: default; }
+
+/* Banners */
+.banner { border-radius: 12px; padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-left: 5px solid var(--warn); display: grid; gap: 8px; }
+.banner.info { border-left-color: var(--accent); }
+.banner .row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+
+/* Summary */
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px 8px; min-width: 0; }
+.tile .v { font: 700 20px/1.15 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .k { font: 700 11px/1.2 var(--body); color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-top: 4px; }
+@media (max-width: 400px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+
+.beginrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.beginrow .lbl { font-weight: 600; }
+.beginrow input { width: 120px; }
+
+/* Cards & forms */
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.card.editing { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+label.f { display: grid; gap: 5px; font-weight: 600; font-size: 14px; }
+input[type=text], input[type=date], input[type=email], input:not([type]), input[inputmode] {
+  width: 100%; min-height: 46px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--paper); font-size: 17px;
+}
+input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.routeprev { min-height: 24px; font-weight: 600; font-size: 16px; overflow-wrap: break-word; }
+.routeprev .arrow { color: var(--muted); padding: 0 3px; }
+.toggles { display: flex; flex-wrap: wrap; gap: 8px; }
+.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; }
+.toggle.wide { border-radius: 12px; padding: 10px 12px; font-size: 15px; font-weight: 600; align-items: flex-start; }
+.toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); flex: none; }
+.toggle.wide input { margin-top: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 0; background: var(--chip); border-radius: 999px; padding: 8px 12px; font-size: 15px; font-weight: 500; min-height: 38px; }
+.chip:active { transform: scale(.97); }
+.chip.more { background: transparent; border: 1px dashed var(--line); color: var(--muted); }
+.chip small { display: block; font-size: 11px; line-height: 1.2; color: var(--muted); font-weight: 400; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip.hit { text-align: left; padding: 6px 12px; }
+.chip.alt { min-height: 32px; padding: 4px 12px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 4px 6px 0 0; }
+.chipnote { font-size: 13px; color: var(--muted); align-self: center; }
+.odo { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+.odo input { font: 700 24px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.odo input::placeholder { font-size: 16px; font-weight: 500; letter-spacing: 0; }
+.photobtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--ink); background: transparent; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.photobtn svg { width: 20px; height: 20px; }
+.odonote { font-size: 14px; min-height: 20px; }
+.odonote.warn { color: var(--warn); font-weight: 600; }
+.odonote.ok { color: var(--ok); }
+.photo { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: center; font-size: 14px; }
+.photo img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.photo .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--ink); text-decoration: underline; font-size: 14px; font-weight: 600; text-align: left; }
+.row2 { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
+.btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.primary { flex: 1; min-height: 50px; border: 0; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font: 800 17px/1 var(--display); letter-spacing: .01em; padding: 0 16px; }
+.primary:disabled { opacity: .5; cursor: default; }
+.secondary { min-height: 50px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-weight: 600; }
+.secondary:disabled { opacity: .5; cursor: default; }
+.formerr { color: var(--warn); font-weight: 600; font-size: 14px; }
+.formerr:empty { display: none; }
+.inrow { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.inrow .secondary { min-height: 46px; }
+
+/* Entries */
+.entries { display: grid; gap: 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.entries .head { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.entry { display: grid; grid-template-columns: 48px 1fr auto; gap: 10px; align-items: center; padding: 10px 14px; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; width: 100%; }
+.entry:last-child { border-bottom: 0; }
+.entry.active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.entry .d { text-align: center; line-height: 1; }
+.entry .d b { display: block; font: 800 20px/1 var(--display); font-variant-numeric: tabular-nums; }
+.entry .d span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.entry .r { font-size: 15px; overflow-wrap: break-word; }
+.entry .r .arrow { color: var(--muted); padding: 0 2px; }
+.entry .o { text-align: right; line-height: 1.2; }
+.entry .o .num { font-size: 15px; font-weight: 700; }
+.entry .o small { display: block; color: var(--muted); font-size: 12px; }
+.entry .o small.warn { color: var(--warn); font-weight: 600; }
+.empty { padding: 18px 14px; color: var(--muted); }
+
+/* Preview */
+.preview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.sheet { background: #fff; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 6px 18px rgba(0,0,0,.08); overflow: hidden; }
+.sheet svg { display: block; width: 100%; height: auto; }
+.note { font-size: 14px; color: var(--muted); }
+.status { font-size: 14px; min-height: 20px; }
+.status.err { color: var(--warn); font-weight: 600; }
+.status.ok { color: var(--ok); font-weight: 600; }
+
+/* Settings */
+details.card summary { cursor: pointer; font: 700 18px/1.2 var(--display); list-style: none; display: flex; justify-content: space-between; }
+details.card summary::-webkit-details-marker { display: none; }
+details.card summary::after { content: '+'; font-family: var(--body); color: var(--muted); }
+details.card[open] summary::after { content: '\2013'; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 420px) { .grid2 { grid-template-columns: 1fr; } }
+.places { display: flex; flex-wrap: wrap; gap: 6px; }
+.places .chip { display: inline-flex; align-items: center; gap: 6px; }
+.places .chip button { border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; padding: 0 0 0 2px; }
+.addplace { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.subhead { font: 700 15px/1.2 var(--display); margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--line); }
+.confirm { border: 1px solid var(--warn); border-radius: 12px; padding: 12px; display: grid; gap: 10px; font-size: 15px; }
+
+/* Install gate */
+.steps { margin: 0; padding-left: 22px; display: grid; gap: 10px; font-size: 16px; }
+.steps svg { width: 18px; height: 18px; vertical-align: -3px; }
+
+/* Sign & send sheet */
+.sheet-bg { position: fixed; inset: 0; background: rgba(8, 14, 24, .55); display: flex; align-items: flex-end; justify-content: center; z-index: 30; }
+.sheet-card { background: var(--card); width: 100%; max-width: 580px; max-height: 92vh; overflow-y: auto; overflow-x: hidden; border-radius: 18px 18px 0 0; padding: 18px 16px 28px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 620px) { .sheet-bg { align-items: center; } .sheet-card { border-radius: 18px; } }
+.sumline { font-size: 15px; }
+.sumline b { font-variant-numeric: tabular-nums; }
+.warnlist { margin: 0; padding-left: 18px; color: var(--warn); font-size: 14px; font-weight: 600; display: grid; gap: 4px; }
+.pad { position: relative; height: 150px; border: 1px dashed #b9c2cf; border-radius: 12px; background: #fff; }
+.pad canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; border-radius: 12px; cursor: crosshair; }
+.pad .padline { position: absolute; left: 16px; right: 16px; bottom: 40px; border-bottom: 1.5px solid #cdd4de; pointer-events: none; }
+.pad .padhint { position: absolute; left: 16px; bottom: 14px; font-size: 12px; color: #8a94a6; pointer-events: none; }
+.sigsaved { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #13213a; }
+.sigsaved img { max-height: 56px; max-width: 70%; }
+.sigsaved .linkbtn { color: #13213a; }
+.certify { display: flex; gap: 10px; align-items: flex-start; font-weight: 700; font-size: 15px; }
+.certify input { width: 22px; height: 22px; margin: 1px 0 0; accent-color: var(--ink); flex: none; }
+.signprev .sheet { box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.queuebar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 16%, transparent); font-size: 14px; font-weight: 600; }
+.datehint { font-size: 14px; color: var(--muted); }
+.datehint b { color: var(--ink); }
+
+/* Toast */
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 10px; font-weight: 600; font-size: 15px; box-shadow: 0 6px 20px rgba(0,0,0,.25); max-width: calc(100% - 32px); z-index: 40; }
+
+/* Photo viewer */
+.viewer { position: fixed; inset: 0; background: rgba(0,0,0,.82); display: grid; place-items: center; padding: 16px; z-index: 35; }
+.viewer img { max-width: 100%; max-height: 80vh; border-radius: 8px; }
+.viewer button { margin-top: 12px; }
+.spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; display: inline-block; animation: sp .8s linear infinite; vertical-align: -3px; }
+@keyframes sp { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } .chip:active { transform: none; } }
+</style>
+</head>
+<body>
+
+<!-- First open in Safari on iPhone: install first, because a Home Screen app keeps its own storage. -->
+<main id="gateView" class="hidden">
+  <header class="top">
+    <div class="vehicle">Vehicle Mileage Log</div>
+    <h1>Add it to your Home Screen first</h1>
+    <p class="lead">It works like an app from there. On iPhone, the Home Screen version keeps its own copy of your log, so set it up there.</p>
+  </header>
+  <section class="card">
+    <ol class="steps">
+      <li>Tap the <b>Share</b> button <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share icon"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M6 11v9h12v-9"/></svg> in Safari.</li>
+      <li>Tap <b>Add to Home Screen</b> (scroll down if you don&#8217;t see it), then <b>Add</b>.</li>
+      <li>Open <b>Mileage Log</b> from your Home Screen.</li>
+    </ol>
+    <p class="note"><button class="linkbtn" id="gateSkip" type="button">Use it here in Safari instead</button></p>
+  </section>
+</main>
+
+<!-- First run: who you are and what you drive. -->
+<main id="setupView" class="hidden">
+  <header class="top">
+    <div class="vehicle">State of Maryland &middot; Vehicle Mileage Log</div>
+    <h1>Set up your log</h1>
+    <p class="lead">This fills in the top of your monthly form. It stays on this phone. Nothing is sent anywhere until you send the form yourself.</p>
+  </header>
+  <section class="card" aria-label="Your details">
+    <label class="f" for="uName">Your name, as it goes on the form
+      <input type="text" id="uName" autocapitalize="characters" autocomplete="name" placeholder="JANE Q. DOE">
+    </label>
+    <div class="grid2">
+      <label class="f" for="uTag">License tag<input type="text" id="uTag" autocapitalize="characters" autocomplete="off" placeholder="EMS1234"></label>
+      <label class="f" for="uVehicle">Year/Make/Model<input type="text" id="uVehicle" autocomplete="off" placeholder="2019 Dodge Durango"></label>
+      <label class="f" for="uBudget"><span>Agency budget code <span class="opt">optional</span></span><input type="text" id="uBudget" autocomplete="off"></label>
+      <label class="f" for="uCommute">Commute miles per day<input type="text" id="uCommute" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Home to work and back"></label>
+    </div>
+    <label class="f" for="uBegin"><span>Odometer at the start of <span id="uMonth">this month</span> <span class="opt">optional</span></span>
+      <input type="text" id="uBegin" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="The ending odometer on last month's form">
+    </label>
+    <label class="f" for="uFleet"><span>Who gets your signed form? <span class="opt">optional</span></span>
+      <input type="email" id="uFleet" autocomplete="off" placeholder="Fleet coordinator's email">
+    </label>
+    <label class="toggle wide" for="uRegion"><input type="checkbox" id="uRegion" checked> <span>Add Region III hospitals and EMS agencies to my places <span class="opt">(you can add your own any time)</span></span></label>
+    <div class="formerr" id="uErr" role="alert"></div>
+    <div class="btns"><button class="primary" id="uStart" type="button">Start my log</button></div>
+    <p class="note">Moving from another phone? <button class="linkbtn" id="uRestore" type="button">Restore a backup</button></p>
+    <div class="status" id="uStatus" role="status"></div>
+  </section>
+</main>
+
+<main id="mainView" class="hidden">
+  <header class="top">
+    <div class="vehicle" id="vehicleLine">State vehicle</div>
+    <h1>Mileage Log</h1>
+    <div class="monthbar">
+      <button class="navbtn" id="prevMonth" type="button" aria-label="Previous month">&#8249;</button>
+      <div class="name" id="monthName" aria-live="polite">&nbsp;</div>
+      <button class="navbtn" id="nextMonth" type="button" aria-label="Next month">&#8250;</button>
+    </div>
+  </header>
+
+  <div class="banner hidden" id="banner" role="status"></div>
+
+  <section class="tiles" aria-label="Month summary">
+    <div class="tile"><div class="v" id="tDays">0</div><div class="k">Days logged</div></div>
+    <div class="tile"><div class="v" id="tCommute">0</div><div class="k">Commute mi</div></div>
+    <div class="tile"><div class="v" id="tDriven">&mdash;</div><div class="k">Miles driven</div></div>
+    <div class="tile"><div class="v" id="tOdo">&mdash;</div><div class="k">Odometer</div></div>
+  </section>
+
+  <section class="beginrow" id="beginRow" aria-label="Beginning odometer"></section>
+
+  <section class="card" id="entryCard" aria-labelledby="entryTitle">
+    <div class="cardhead"><h2 id="entryTitle">Log a day</h2></div>
+    <div class="queuebar hidden" id="queueBar" role="status"></div>
+    <label class="f" for="fDate">Date
+      <input type="date" id="fDate" required>
+    </label>
+    <div class="datehint hidden" id="dateHint"></div>
+    <label class="f" for="fRoute">Where did you go? <span class="muted" style="font-weight:500">Commas between places &middot; type to search</span>
+      <input type="text" id="fRoute" placeholder="W, JHH, BCoFD" autocomplete="off" autocapitalize="words" enterkeyhint="next">
+    </label>
+    <div class="routeprev" id="routePrev" aria-live="polite"></div>
+    <div class="toggles">
+      <label class="toggle" for="fStartHome"><input type="checkbox" id="fStartHome" checked> Start at home</label>
+      <label class="toggle" for="fEndHome"><input type="checkbox" id="fEndHome" checked> End at home</label>
+    </div>
+    <div class="chips" id="chips" aria-label="Your places"></div>
+    <div class="odo">
+      <label class="f" for="fOdo">Ending odometer
+        <input type="text" id="fOdo" inputmode="numeric" pattern="[0-9]*" placeholder="Miles on the dash" autocomplete="off">
+      </label>
+      <label class="photobtn" for="fPhoto" id="photoBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        Read photo
+      </label>
+      <input type="file" id="fPhoto" accept="image/*" multiple class="hidden">
+    </div>
+    <div class="odonote" id="odoNote"></div>
+    <div class="photo hidden" id="photoBox">
+      <img id="photoImg" alt="Odometer photo">
+      <div><div id="photoStatus"></div><div class="actions" id="photoActions"></div></div>
+    </div>
+    <div class="row2">
+      <label class="f" for="fCommute">Commute miles
+        <input type="text" id="fCommute" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+      </label>
+      <label class="f" for="fDriver">Driver&#8217;s name
+        <input type="text" id="fDriver" autocomplete="off" autocapitalize="characters">
+      </label>
+    </div>
+    <div class="formerr" id="formErr" role="alert"></div>
+    <div class="btns">
+      <button class="primary" id="saveBtn" type="button">Save day</button>
+      <button class="secondary hidden" id="cancelBtn" type="button">Cancel</button>
+      <button class="secondary hidden" id="deleteBtn" type="button">Delete</button>
+    </div>
+  </section>
+
+  <section class="entries" aria-labelledby="entriesTitle">
+    <div class="head"><h2 id="entriesTitle">This month</h2><span class="muted" id="rowsUsed"></span></div>
+    <div id="entryList"><div class="empty">Loading your log&hellip;</div></div>
+  </section>
+
+  <section class="preview" aria-labelledby="pvTitle">
+    <div class="cardhead"><h2 id="pvTitle">Form preview</h2></div>
+    <div class="btns">
+      <button class="primary" id="signBtn" type="button">Review, sign &amp; send</button>
+    </div>
+    <div class="status" id="signNote" role="status"></div>
+    <div class="btns">
+      <button class="secondary" id="dlBtn" type="button">Save PDF</button>
+    </div>
+    <div class="status" id="pvStatus" role="status"></div>
+    <div id="sheets"></div>
+    <p class="note">At the end of the month, tap <b>Review, sign &amp; send</b>. Your log is kept on this phone only.</p>
+  </section>
+
+  <details class="card" id="settingsCard">
+    <summary>Vehicle, driver &amp; backup</summary>
+    <div class="grid2">
+      <label class="f" for="sDriverName">Assigned driver&#8217;s name<input type="text" id="sDriverName" autocapitalize="characters"></label>
+      <label class="f" for="sDriverShort">Name for the Driver column<input type="text" id="sDriverShort" autocapitalize="characters"></label>
+      <label class="f" for="sTag">License tag<input type="text" id="sTag" autocapitalize="characters"></label>
+      <label class="f" for="sVehicle">Year/Make/Model<input type="text" id="sVehicle"></label>
+      <label class="f" for="sBudget">Agency budget code<input type="text" id="sBudget"></label>
+      <label class="f" for="sCommute">Default commute miles<input type="text" id="sCommute" inputmode="numeric"></label>
+      <label class="f" for="sHome">Home abbreviation<input type="text" id="sHome" maxlength="12"></label>
+      <label class="f" for="sFleet">Send signed forms to<input type="email" id="sFleet" placeholder="Fleet coordinator's email" autocomplete="off"></label>
+    </div>
+    <div class="sigsaved hidden" id="sSigRow"><img id="sSigImg" alt="Your saved signature"><button class="linkbtn" type="button" id="sSigClear">Remove signature</button></div>
+    <div>
+      <div class="f" style="margin-bottom:6px">Saved places <span class="muted" style="font-weight:400">(new places are added when you save a day; type ABBR = full name to make one searchable)</span></div>
+      <div class="places" id="placeList"></div>
+    </div>
+    <div class="addplace">
+      <input type="text" id="sNewPlace" placeholder="Add a place, e.g. GBMC = Greater Baltimore Medical Center" aria-label="New place" autocomplete="off">
+      <button class="secondary" id="sAddPlace" type="button">Add</button>
+    </div>
+    <div class="btns"><button class="primary" id="sSave" type="button">Save details</button></div>
+    <div class="status" id="sStatus" role="status"></div>
+
+    <div class="subhead">Backup</div>
+    <p class="note" id="bkNote">Your log is stored only on this phone. Back it up now and then, and before you change phones.</p>
+    <div class="btns">
+      <button class="secondary" id="bkSave" type="button">Back up now</button>
+      <button class="secondary" id="bkRestore" type="button">Restore a backup</button>
+    </div>
+    <div id="bkConfirm"></div>
+    <div class="status" id="bkStatus" role="status"></div>
+
+    <div class="subhead">Reminder</div>
+    <p class="note"><a class="linkbtn" href="reminder.ics" target="_blank" rel="noopener" id="remLink">Add a monthly reminder to your calendar</a>: the 1st of each month at 8 AM, to sign and send last month&#8217;s log.</p>
+    <p class="note" id="aboutNote"></p>
+  </details>
+</main>
+
+<input type="file" id="bkFile" accept="application/json,.json" class="hidden">
+
+<div class="sheet-bg hidden" id="signSheet" role="dialog" aria-modal="true" aria-labelledby="signTitle">
+  <div class="sheet-card">
+    <div class="cardhead"><h2 id="signTitle">Sign &amp; send</h2><button class="linkbtn" type="button" id="signClose">Close</button></div>
+    <div class="sumline" id="signSummary"></div>
+    <ul class="warnlist hidden" id="signWarn"></ul>
+    <div id="sigArea"></div>
+    <label class="f" for="signTo"><span>Send to <span class="opt" id="signToHint"></span></span>
+      <span class="inrow"><input type="email" id="signTo" placeholder="Fleet coordinator's email" autocomplete="off"><button class="secondary" type="button" id="signCopy">Copy</button></span>
+    </label>
+    <label class="certify" for="signCertify"><input type="checkbox" id="signCertify"> <span id="signCertifyText">I certify this mileage log is accurate.</span></label>
+    <div class="status" id="signStatus" role="status"></div>
+    <div class="btns">
+      <button class="primary" id="signSend" type="button" disabled>Sign &amp; send</button>
+    </div>
+    <p class="note" id="signHow"></p>
+    <div class="signprev" id="signPreview"></div>
+  </div>
+</div>
+<div class="toast hidden" id="toast" role="status"></div>
+<div class="viewer hidden" id="viewer" role="dialog" aria-modal="true" aria-label="Odometer photo">
+  <div style="text-align:center"><img id="viewerImg" alt="Odometer photo"><br><button class="secondary" id="viewerClose" type="button">Close</button></div>
+</div>
+
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="form.js"></script>
+<script src="ocr.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

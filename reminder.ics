@@ -1,0 +1,20 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Mileage Log//Monthly reminder//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:mileage-log-monthly-reminder@mileage-log
+DTSTAMP:20261111T000000Z
+DTSTART:20261201T080000
+DTEND:20261201T081500
+RRULE:FREQ=MONTHLY;BYMONTHDAY=1
+SUMMARY:Sign & send last month's mileage log
+DESCRIPTION:Open Mileage Log on your Home Screen and tap Review\, sign & send.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Sign & send last month's mileage log
+TRIGGER:PT0M
+END:VALARM
+END:VEVENT
+END:VCALENDAR
