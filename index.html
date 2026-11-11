@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <title>Mileage Log</title>
 <meta name="description" content="Fill out the State of Maryland Vehicle Mileage Log on your phone. Your log stays on your device.">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef1f4">
@@ -21,7 +23,7 @@
 @font-face { font-family: 'Manrope'; font-style: normal; font-weight: 700; font-display: swap; src: url(fonts/manrope-latin-700-normal.woff2) format('woff2'); }
 @font-face { font-family: 'Manrope'; font-style: normal; font-weight: 800; font-display: swap; src: url(fonts/manrope-latin-800-normal.woff2) format('woff2'); }
 :root {
-  /* Fleet logbook: navy ink on cool paper; Maryland gold marks the one primary action. One soft rounded face (Manrope) throughout, tabular figures for mileage. Single column, phone first. */
+  /* Logbook: navy ink on cool paper; Maryland gold marks the one primary action. One soft rounded face (Manrope) throughout, tabular figures for mileage. Single column, phone first. */
   --paper: #eef1f4;
   --card: #ffffff;
   --ink: #13213a;
@@ -250,8 +252,8 @@ details.card[open] summary::after { content: '\2013'; }
     <label class="f" for="uBegin"><span>Odometer at the start of <span id="uMonth">this month</span> <span class="opt">optional</span></span>
       <input type="text" id="uBegin" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="The ending odometer on last month's form">
     </label>
-    <label class="f" for="uFleet"><span>Who gets your signed form? <span class="opt">optional</span></span>
-      <input type="email" id="uFleet" autocomplete="off" placeholder="Fleet coordinator's email">
+    <label class="f" for="uSendTo"><span>Email the signed form to <span class="opt">optional &middot; any address, change it any time</span></span>
+      <input type="email" id="uSendTo" multiple autocomplete="off" autocapitalize="off" placeholder="name@example.com">
     </label>
     <label class="toggle wide" for="uRegion"><input type="checkbox" id="uRegion" checked> <span>Add Region III hospitals and EMS agencies to my places <span class="opt">(you can add your own any time)</span></span></label>
     <div class="formerr" id="uErr" role="alert"></div>
@@ -359,7 +361,7 @@ details.card[open] summary::after { content: '\2013'; }
       <label class="f" for="sBudget">Agency budget code<input type="text" id="sBudget"></label>
       <label class="f" for="sCommute">Default commute miles<input type="text" id="sCommute" inputmode="numeric"></label>
       <label class="f" for="sHome">Home abbreviation<input type="text" id="sHome" maxlength="12"></label>
-      <label class="f" for="sFleet">Send signed forms to<input type="email" id="sFleet" placeholder="Fleet coordinator's email" autocomplete="off"></label>
+      <label class="f" for="sSendTo">Email signed forms to<input type="email" id="sSendTo" multiple placeholder="name@example.com" autocomplete="off" autocapitalize="off"></label>
     </div>
     <div class="sigsaved hidden" id="sSigRow"><img id="sSigImg" alt="Your saved signature"><button class="linkbtn" type="button" id="sSigClear">Remove signature</button></div>
     <div>
@@ -374,7 +376,7 @@ details.card[open] summary::after { content: '\2013'; }
     <div class="status" id="sStatus" role="status"></div>
 
     <div class="subhead">Backup</div>
-    <p class="note" id="bkNote">Your log is stored only on this phone. Back it up now and then, and before you change phones.</p>
+    <p class="note" id="bkNote">Your log is stored only on this phone.</p>
     <div class="btns">
       <button class="secondary" id="bkSave" type="button">Back up now</button>
       <button class="secondary" id="bkRestore" type="button">Restore a backup</button>
@@ -396,8 +398,8 @@ details.card[open] summary::after { content: '\2013'; }
     <div class="sumline" id="signSummary"></div>
     <ul class="warnlist hidden" id="signWarn"></ul>
     <div id="sigArea"></div>
-    <label class="f" for="signTo"><span>Send to <span class="opt" id="signToHint"></span></span>
-      <span class="inrow"><input type="email" id="signTo" placeholder="Fleet coordinator's email" autocomplete="off"><button class="secondary" type="button" id="signCopy">Copy</button></span>
+    <label class="f" for="signTo"><span>Email to <span class="opt" id="signToHint"></span></span>
+      <span class="inrow"><input type="email" id="signTo" multiple placeholder="name@example.com" autocomplete="off" autocapitalize="off"><button class="secondary" type="button" id="signCopy">Copy</button></span>
     </label>
     <label class="certify" for="signCertify"><input type="checkbox" id="signCertify"> <span id="signCertifyText">I certify this mileage log is accurate.</span></label>
     <div class="status" id="signStatus" role="status"></div>

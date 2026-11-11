@@ -20,6 +20,7 @@
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function digits(s) { return String(s == null ? '' : s).replace(/[^0-9]/g, ''); }
+  function cleanTo(v) { return String(v || '').split(/[\s,;]+/).filter(Boolean).join(', '); }
   function routeHtml(stops) { return stops.map(esc).join('<span class="arrow">→</span>'); }
   function shortName(full) {
     var w = String(full || '').trim().split(/\s+/).filter(Boolean);
@@ -132,7 +133,7 @@
       defaultCommute: s.defaultCommute != null ? s.defaultCommute : '',
       home: s.home || 'H', places: Array.isArray(s.places) ? s.places : [],
       info: (s.placeInfo && typeof s.placeInfo === 'object') ? s.placeInfo : {},
-      fleetEmail: s.fleetEmail || ''
+      sendTo: s.sendTo != null ? s.sendTo : (s.fleetEmail || '')
     };
   }
   function headerKey() { var s = settings(); return [s.driverName, s.licenseTag, s.vehicle, s.budgetCode].join('|'); }
@@ -583,11 +584,11 @@
     var d = new Date(iso);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   }
-  function fleetSubject(key) {
+  function mailSubject(key) {
     var s = settings();
     return 'Vehicle Mileage Log – ' + MF.monthLabel(key) + (s.licenseTag ? ' – ' + s.licenseTag : '') + (s.driverName ? ' – ' + titleCase(s.driverName) : '');
   }
-  function fleetBody(key) {
+  function mailBody(key) {
     var s = settings(), sum = summarize({ trips: trips(key) }), b = beginOdo(key).value;
     return 'Attached is my signed Vehicle Mileage Log for ' + MF.monthLabel(key) + '.\n\n' +
       (s.licenseTag ? 'Vehicle: ' + s.licenseTag + (s.vehicle ? ', ' + s.vehicle : '') + '\n' : '') +
@@ -631,14 +632,14 @@
     var w = monthWarnings(key);
     $('signWarn').innerHTML = w.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('');
     $('signWarn').classList.toggle('hidden', !w.length);
-    $('signTo').value = s.fleetEmail;
+    $('signTo').value = s.sendTo;
     $('signCertify').checked = false;
     $('signCertifyText').textContent = 'I certify this mileage log for ' + MF.monthLabel(key) + ' is accurate.';
     $('signSend').textContent = shareFiles ? 'Sign & send' : 'Sign & download';
-    $('signToHint').textContent = shareFiles ? '(add this address in your email app)' : '(attach the PDF to an email to this address)';
+    $('signToHint').textContent = '(optional; remembered for next month)';
     $('signHow').textContent = shareFiles ?
-      'Your phone’s share menu opens with the signed PDF. Pick Mail, Outlook or Gmail and send it from your own email.' :
-      'The signed PDF downloads. Attach it to an email to fleet.';
+      'Sign & send opens your phone’s share menu with the signed PDF. Pick Mail, Outlook or Gmail, paste the address in To (tap Copy first), and send it from your own email.' :
+      'The signed PDF downloads. Attach it to an email to this address.';
     signStatus('');
     $('signSheet').classList.remove('hidden'); document.body.style.overflow = 'hidden';
     renderSigArea(); updateSignButtons();
@@ -653,7 +654,7 @@
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('signSheet').classList.contains('hidden')) closeSign(); });
   $('signCertify').addEventListener('change', updateSignButtons);
   $('signCopy').onclick = function () {
-    var v = $('signTo').value.trim(); if (!v) return;
+    var v = cleanTo($('signTo').value); if (!v) return;
     var done = function () { $('signCopy').textContent = 'Copied'; setTimeout(function () { $('signCopy').textContent = 'Copy'; }, 1800); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(done, function () { $('signTo').select(); });
     else { $('signTo').select(); try { document.execCommand('copy'); done(); } catch (e) {} }
@@ -760,16 +761,20 @@
   $('signSend').onclick = function () {
     var key = S.view, sig = currentSig(), file = sig && readyFile(key, sig);
     if (!file) { updateSignButtons(); return; }
-    var to = $('signTo').value.trim();
-    var how = deliver(file, fleetSubject(key), fleetBody(key));   // straight from the tap
+    var to = cleanTo($('signTo').value);
+    var how = deliver(file, mailSubject(key), mailBody(key));   // straight from the tap
+    var copied = false;
+    if (to && navigator.clipboard && navigator.clipboard.writeText) {   // best effort, after the share call
+      try { navigator.clipboard.writeText(to).then(function () { copied = true; }, function () {}); } catch (e) {}
+    }
     keepSignature(sig);
-    if (to !== settings().fleetEmail) saveSettings({ fleetEmail: to }).catch(function () {});
+    if (to !== settings().sendTo) saveSettings({ sendTo: to }).catch(function () {});
     how.then(function (h) {
       if (h === 'cancelled') { signStatus('Not sent. Tap Sign & send when you’re ready.'); return; }
       var m = S.months[key];
       patchMonth(key, { submitted: { at: new Date().toISOString(), to: to, rev: m ? m.rev : null, how: h } }).catch(function () {});
       closeSign(); renderSignNote();
-      toast(h === 'shared' ? 'Signed. Finish sending in your email app.' : 'Signed PDF downloaded');
+      toast(h === 'shared' ? (to ? 'Signed. Send it to ' + to + (copied ? ' (address copied)' : '') + '.' : 'Signed. Finish sending in your email app.') : 'Signed PDF downloaded');
     }).catch(function (e) {
       var blocked = e && e.name === 'NotAllowedError';
       signStatus(blocked ? 'Your phone blocked the share menu. Tap Sign & send again.' : 'Couldn’t open the share menu here. Try again, or use Save PDF on the main screen.', 'err');
@@ -1022,13 +1027,13 @@
 
   /* ------------------------------------------------------------- settings */
   var settingsDirty = false;
-  var FIELDS = ['sDriverName', 'sDriverShort', 'sTag', 'sVehicle', 'sBudget', 'sCommute', 'sHome', 'sFleet'];
+  var FIELDS = ['sDriverName', 'sDriverShort', 'sTag', 'sVehicle', 'sBudget', 'sCommute', 'sHome', 'sSendTo'];
   function fillSettings() {
     if (settingsDirty) return;
     var s = settings();
     $('sDriverName').value = s.driverName; $('sDriverShort').value = s.driverShort; $('sTag').value = s.licenseTag;
     $('sVehicle').value = s.vehicle; $('sBudget').value = s.budgetCode; $('sCommute').value = s.defaultCommute;
-    $('sHome').value = s.home; $('sFleet').value = s.fleetEmail;
+    $('sHome').value = s.home; $('sSendTo').value = s.sendTo;
     renderPlaces();
   }
   function renderPlaces() {
@@ -1070,7 +1075,7 @@
     savePatch({
       driverName: $('sDriverName').value.trim(), driverShort: $('sDriverShort').value.trim(),
       licenseTag: $('sTag').value.trim(), vehicle: $('sVehicle').value.trim(), budgetCode: $('sBudget').value.trim(),
-      defaultCommute: c === '' ? '' : +c, home: $('sHome').value.trim() || 'H', fleetEmail: $('sFleet').value.trim()
+      defaultCommute: c === '' ? '' : +c, home: $('sHome').value.trim() || 'H', sendTo: cleanTo($('sSendTo').value)
     }, 'Saved. The form updates to match.');
   };
   $('settingsCard').addEventListener('toggle', function () { if (this.open) { fillSettings(); renderBackupNote(); } });
@@ -1085,6 +1090,7 @@
   function renderBackupNote() {
     var last = S.meta.lastBackup, store = Store.kind() === 'localStorage' ? ' (in this browser&#8217;s basic storage)' : '';
     $('bkNote').innerHTML = 'Your log is stored only on this phone' + store + '. Back it up now and then, and before you change phones. ' +
+      'A backup is a plain copy of your log and signature, so keep it somewhere private, like iCloud Drive. ' +
       (last ? 'Last backup: ' + esc(shortWhen(last)) + '.' : 'No backup yet.');
     $('aboutNote').textContent = 'Mileage Log ' + VERSION + '. Photos are read on this phone and never stored or uploaded.';
   }
@@ -1152,7 +1158,7 @@
       setupDone: true, createdAt: new Date().toISOString(),
       driverName: name, driverShort: shortName(name), licenseTag: tag, vehicle: $('uVehicle').value.trim(),
       budgetCode: $('uBudget').value.trim(), defaultCommute: commute === '' ? '' : +commute, home: 'H',
-      places: places, placeInfo: info, fleetEmail: $('uFleet').value.trim()
+      places: places, placeInfo: info, sendTo: cleanTo($('uSendTo').value)
     };
     $('uStart').disabled = true;
     saveSettings(s).then(function () {
