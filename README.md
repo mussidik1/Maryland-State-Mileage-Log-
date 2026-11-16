@@ -19,6 +19,12 @@ Open the site on your phone.
 - **iPhone (Safari):** Share → **Add to Home Screen**. Set up the log from the Home Screen icon. On iPhone, the Home Screen app keeps its own storage, separate from Safari.
 - **Android (Chrome):** tap **Install** when offered, or ⋮ → **Add to Home screen**.
 
+## Offline
+
+After the first visit the app is saved on the phone: it opens instantly and works with a slow connection or none at all. The photo reader (about 7 MB) is saved in the background the first time the app is online, so photos can be read offline too (**Vehicle, driver & backup → Offline** shows the status). A new version downloads in the background and is used the next time the app opens.
+
+When releasing a change, bump `VERSION` in `sw.js` and `me/sw.js`; that is what tells phones to fetch the new files.
+
 ## Hosting
 
 It is a static site: the files in this folder are the whole app. GitHub Pages: **Settings → Pages → Deploy from a branch → `main` / root**.

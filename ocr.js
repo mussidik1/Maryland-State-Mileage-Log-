@@ -220,10 +220,55 @@
     }, function (e) { listener = null; throw e; });
   }
 
+  /* ------------------------------------------------------- offline copy */
+  // The same feature tests Tesseract uses to pick its engine file, so only the one this
+  // phone will load gets saved.
+  var RELAXED_SIMD = [0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,15,1,13,0,65,1,253,15,65,2,253,15,253,128,2,11];
+  var SIMD = [0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11];
+  var READER_CACHE = 'mileage-log-reader-v7';   // must match sw.js
+  function supports(bytes) { try { return WebAssembly.validate(new Uint8Array(bytes)); } catch (e) { return false; } }
+  function coreFile() {
+    if (typeof WebAssembly !== 'object') return 'tesseract-core-lstm.wasm.js';
+    if (supports(RELAXED_SIMD)) return 'tesseract-core-relaxedsimd-lstm.wasm.js';
+    if (supports(SIMD)) return 'tesseract-core-simd-lstm.wasm.js';
+    return 'tesseract-core-lstm.wasm.js';
+  }
+  function readerFiles() {
+    return ['tesseract.min.js', 'worker.min.js', coreFile(), 'eng.traineddata.gz'].map(function (f) { return VENDOR + f; });
+  }
+  function missingFiles(cache) {
+    return Promise.all(readerFiles().map(function (u) { return cache.match(u).then(function (m) { return m ? null : u; }); }))
+      .then(function (list) { return list.filter(Boolean); });
+  }
+  // Is the reader saved on this phone? Resolves true, false, or null (can't tell).
+  function savedOffline() {
+    if (!('caches' in window)) return Promise.resolve(null);
+    return caches.open(READER_CACHE).then(missingFiles).then(function (m) { return !m.length; }, function () { return null; });
+  }
+  // Download whatever part of the reader isn't saved yet (about 7 MB the first time).
+  var saving = null;
+  function saveOffline() {
+    if (saving) return saving;
+    if (!('caches' in window)) return Promise.resolve(false);
+    saving = caches.open(READER_CACHE).then(function (c) {
+      return missingFiles(c).then(function (missing) {
+        return missing.reduce(function (p, u) {   // one at a time: gentle on a slow connection
+          return p.then(function () {
+            return fetch(u).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return c.put(u, r); });
+          });
+        }, Promise.resolve());
+      });
+    }).then(function () { return true; });
+    saving.then(function () { saving = null; }, function () { saving = null; });
+    return saving;
+  }
+
   root.MileageOCR = {
     read: read,
     warm: function () { worker().catch(function () {}); },
     isReady: function () { return ready; },
-    _clean: clean, _choose: choose
+    savedOffline: savedOffline,
+    saveOffline: saveOffline,
+    _clean: clean, _choose: choose, _readerFiles: readerFiles
   };
 })(window);

@@ -3,7 +3,7 @@
    unless the driver shares a PDF or a backup. */
 (function () {
   'use strict';
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
   var MF = window.MileageForm, OCR = window.MileageOCR;
   var $ = function (id) { return document.getElementById(id); };
   var pad = function (n) { return String(n).padStart(2, '0'); };
@@ -1078,7 +1078,46 @@
       defaultCommute: c === '' ? '' : +c, home: $('sHome').value.trim() || 'H', sendTo: cleanTo($('sSendTo').value)
     }, 'Saved. The form updates to match.');
   };
-  $('settingsCard').addEventListener('toggle', function () { if (this.open) { fillSettings(); renderBackupNote(); } });
+  $('settingsCard').addEventListener('toggle', function () { if (this.open) { fillSettings(); renderBackupNote(); renderOffline(); } });
+
+  /* --------------------------------------------------------------- offline */
+  // The service worker keeps the app on the phone; the photo reader (about 7 MB) is saved
+  // once in the background so photos can be read with no connection.
+  function renderOffline() {
+    var note = $('offNote'), btns = $('offBtns');
+    if (!('serviceWorker' in navigator)) {
+      note.textContent = 'This browser can’t keep the app for offline use. Open the link in Safari or Chrome.';
+      btns.classList.add('hidden'); return;
+    }
+    var app = navigator.serviceWorker.controller ? 'The app is saved on this phone, so it opens and works without a connection.' :
+      'Saving the app on this phone for offline use. It finishes the next time you open it.';
+    if (!OCR || !OCR.savedOffline) { note.textContent = app; return; }
+    OCR.savedOffline().then(function (ok) {
+      note.textContent = app + (ok ? ' The photo reader is saved too.' :
+        ok === false ? ' The photo reader isn’t saved yet, so reading a photo needs a connection.' : '');
+      btns.classList.toggle('hidden', ok !== false);
+    });
+  }
+  function saveReader(manual) {
+    if (!OCR || !OCR.saveOffline) return;
+    var b = $('offSave');
+    if (manual) { b.disabled = true; b.textContent = 'Saving the photo reader…'; }
+    OCR.saveOffline().then(function () {
+      if (manual) toast('Photo reader saved for offline use');
+    }, function () {
+      if (manual) toast('Couldn’t save it. Try again on a better connection.');
+    }).then(function () {
+      b.disabled = false; b.textContent = 'Save the photo reader for offline use';
+      if ($('settingsCard').open) renderOffline();
+    });
+  }
+  $('offSave').onclick = function () { saveReader(true); };
+  function autoSaveReader() {
+    var c = navigator.connection;
+    if (!OCR || !OCR.savedOffline || !navigator.onLine || (c && c.saveData)) return;
+    OCR.savedOffline().then(function (ok) { if (ok === false) saveReader(false); });
+  }
+  window.addEventListener('online', function () { setTimeout(autoSaveReader, 2000); });
 
   /* ---------------------------------------------------------------- backup */
   function backupData() {
@@ -1233,6 +1272,17 @@
   });
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname))) {
-    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    var startOffline = function () {
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        // A Home Screen app can stay open for days: look for a new version when it comes back.
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible' && navigator.onLine) reg.update().catch(function () {});
+        });
+      }).catch(function () {});
+      setTimeout(autoSaveReader, 4000);   // after the app has drawn
+    };
+    // The personal page loads this script after the page's load event, so check both ways.
+    if (document.readyState === 'complete') startOffline(); else window.addEventListener('load', startOffline);
+    navigator.serviceWorker.addEventListener('controllerchange', function () { if ($('settingsCard').open) renderOffline(); });
   }
 })();
