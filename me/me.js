@@ -41,7 +41,7 @@
     });
     if (d.r) REGION3.forEach(function (p) { if (places.indexOf(p[0]) < 0) { places.push(p[0]); info[p[0]] = p[1]; } });
     return {
-      setupDone: true, createdAt: new Date().toISOString(), fromSetupLink: true,
+      setupDone: true, createdAt: new Date().toISOString(), fromSetupLink: true, activity: true,
       driverName: d.n || '', driverShort: d.d || '', licenseTag: d.t || '', vehicle: d.m || '', budgetCode: d.b || '',
       defaultCommute: d.c != null ? d.c : '', home: d.h || 'H', places: places, placeInfo: info, sendTo: d.e || ''
     };
@@ -55,12 +55,16 @@
       r.onerror = function () { reject(r.error); };
       r.onsuccess = function () {
         var db = r.result, t = db.transaction('kv', 'readwrite'), st = t.objectStore('kv'), g = st.get('settings');
-        g.onsuccess = function () { if (!g.result || !g.result.setupDone) st.put(settings, 'settings'); };
+        g.onsuccess = function () {
+          if (!g.result || !g.result.setupDone) { if (settings) st.put(settings, 'settings'); return; }
+          // Personal links come with the monthly activity report turned on, unless it was turned off.
+          if (g.result.activity === undefined) st.put(Object.assign({}, g.result, { activity: true }), 'settings');
+        };
         t.oncomplete = function () { db.close(); resolve(); };
         t.onerror = function () { db.close(); reject(t.error); };
       };
     }).catch(function () {
-      try { if (!localStorage.getItem('mileage-log:settings')) localStorage.setItem('mileage-log:settings', JSON.stringify(settings)); } catch (e) {}
+      try { if (settings && !localStorage.getItem('mileage-log:settings')) localStorage.setItem('mileage-log:settings', JSON.stringify(settings)); } catch (e) {}
     });
   }
   var started = false;
@@ -73,7 +77,7 @@
     var g = document.querySelector('#gateView h1'), l = document.querySelector('#gateView .lead');
     if (g) g.textContent = 'Add it to your Home Screen first';
     if (l) l.textContent = 'It works like an app from there. On iPhone, the Home Screen version keeps its own copy of your log, so set it up there.';
-    startApp(); return;
+    seed(null).then(startApp); return;
   }
   var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   var standalone = window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);

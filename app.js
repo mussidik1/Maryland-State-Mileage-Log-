@@ -3,8 +3,8 @@
    unless the driver shares a PDF or a backup. */
 (function () {
   'use strict';
-  var VERSION = '1.1.0';
-  var MF = window.MileageForm, OCR = window.MileageOCR;
+  var VERSION = '1.2.0';
+  var MF = window.MileageForm, OCR = window.MileageOCR, AR = window.ActivityReport;
   var $ = function (id) { return document.getElementById(id); };
   var pad = function (n) { return String(n).padStart(2, '0'); };
   var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -121,7 +121,7 @@
   ];
 
   var S = {
-    settings: null, months: {}, view: ymOf(todayISO()), editId: null, photo: null,
+    settings: null, months: {}, view: ymOf(todayISO()), editId: null, photo: null, act: null, actEdit: null,
     loaded: false, signature: null, redraw: false, queue: [], measure: null, meta: {}
   };
 
@@ -133,7 +133,8 @@
       defaultCommute: s.defaultCommute != null ? s.defaultCommute : '',
       home: s.home || 'H', places: Array.isArray(s.places) ? s.places : [],
       info: (s.placeInfo && typeof s.placeInfo === 'object') ? s.placeInfo : {},
-      sendTo: s.sendTo != null ? s.sendTo : (s.fleetEmail || '')
+      sendTo: s.sendTo != null ? s.sendTo : (s.fleetEmail || ''),
+      actOn: s.activity === true, actEmail: s.actEmail || '', actForm: s.actForm || ''
     };
   }
   function headerKey() { var s = settings(); return [s.driverName, s.licenseTag, s.vehicle, s.budgetCode].join('|'); }
@@ -201,6 +202,21 @@
       S.months[key] = cur;
       return Store.set('month:' + key, cur).then(function () { return cur; });
     });
+  }
+  // Activity and notes: saved with the month, but they don't change the mileage form, so no rev bump.
+  function writeActivity(key, mutate) {
+    return queued('month:' + key, function () {
+      var cur = S.months[key] ? clone(S.months[key]) : { month: key, beginOdo: null, trips: [], rev: 0 };
+      mutate(cur);
+      cur.month = key;
+      cur.updatedAt = new Date().toISOString();
+      S.months[key] = cur;
+      return Store.set('month:' + key, cur).then(function () { return cur; });
+    });
+  }
+  function setDayActivity(m, date, counts) {
+    m.activity = m.activity || {};
+    if (counts && Object.keys(counts).length) m.activity[date] = counts; else delete m.activity[date];
   }
   function patchMonth(key, patch) {   // bookkeeping that is not a change to the log itself
     if (S.months[key]) Object.assign(S.months[key], patch);
@@ -274,6 +290,7 @@
   /* ------------------------------------------------------------ rendering */
   function renderAll() {
     renderHeader(); renderSummary(); renderBegin(); renderChips(); renderEntries(); renderPreview(); renderSignNote();
+    renderActBox(); renderActCard();
     if (!S.editId && !$('fCommute').value) $('fCommute').value = settings().defaultCommute;
     if (!S.editId && !$('fDriver').value) $('fDriver').value = settings().driverShort;
     updateRoutePreview(); updateOdoNote();
@@ -417,25 +434,40 @@
       $('rowsUsed').textContent = rows == null ? pages.length + ' pages' : rows + ' of ' + MF.ROWS_PER_PAGE + ' rows';
     } else $('rowsUsed').textContent = '';
     if (!S.loaded) return;
-    if (!t.length) {
+    var acts = actOn() ? monthActivity(S.view) : {}, tripDays = {}, shownAct = {};
+    t.forEach(function (x) { tripDays[x.date] = 1; });
+    var only = Object.keys(acts).filter(function (d) { return !tripDays[d] && ymOf(d) === S.view && AR.count(acts[d]); });
+    if (!t.length && !only.length) {
       el.innerHTML = '<div class="empty">No days logged for ' + esc(MF.monthLabel(S.view)) + ' yet. Your first entry above starts the sheet.</div>';
       return;
     }
-    var prevOdo = beginOdo(S.view).value;
-    el.innerHTML = t.map(function (x) {
+    var prevOdo = beginOdo(S.view).value, rowsOut = [];
+    t.forEach(function (x) {
       var d = new Date(x.date + 'T12:00:00'), delta = (prevOdo != null && x.endOdo) ? (+x.endOdo - prevOdo) : null;
       prevOdo = +x.endOdo || prevOdo;
       var bad = delta != null && (delta < 0 || delta > 600);
-      return '<button type="button" class="entry' + (S.editId === x.id ? ' active' : '') + '" data-id="' + esc(x.id) + '">' +
+      var act = acts[x.date] && !shownAct[x.date] ? AR.summary(acts[x.date]) : '';
+      shownAct[x.date] = 1;
+      rowsOut.push({ date: x.date, html: '<button type="button" class="entry' + (S.editId === x.id ? ' active' : '') + '" data-id="' + esc(x.id) + '">' +
         '<span class="d"><b>' + d.getDate() + '</b><span>' + DOW[d.getDay()] + '</span></span>' +
-        '<span class="r">' + routeHtml(x.route || []) + '</span>' +
+        '<span class="r">' + routeHtml(x.route || []) + (act ? '<span class="act">' + esc(act) + '</span>' : '') + '</span>' +
         '<span class="o"><span class="num">' + fmt(x.endOdo) + '</span>' +
-        (delta != null ? '<small class="' + (bad ? 'warn' : '') + '">' + (delta >= 0 ? '+' : '') + fmt(delta) + ' mi</small>' : '') + '</span></button>';
-    }).join('');
+        (delta != null ? '<small class="' + (bad ? 'warn' : '') + '">' + (delta >= 0 ? '+' : '') + fmt(delta) + ' mi</small>' : '') + '</span></button>' });
+    });
+    only.forEach(function (day) {
+      var d = new Date(day + 'T12:00:00');
+      rowsOut.push({ date: day, html: '<button type="button" class="entry actonly' + (S.actEdit === day ? ' active' : '') + '" data-act="' + esc(day) + '">' +
+        '<span class="d"><b>' + d.getDate() + '</b><span>' + DOW[d.getDay()] + '</span></span>' +
+        '<span class="r"><span class="act" style="margin:0">' + esc(AR.summary(acts[day])) + '</span></span>' +
+        '<span class="o">No driving</span></button>' });
+    });
+    rowsOut.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    el.innerHTML = rowsOut.map(function (r) { return r.html; }).join('');
   }
   $('entryList').addEventListener('click', function (e) {
     var b = e.target.closest('.entry'); if (!b) return;
-    startEdit(b.getAttribute('data-id'));
+    if (b.getAttribute('data-act')) startEditActivity(b.getAttribute('data-act'));
+    else startEdit(b.getAttribute('data-id'));
   });
 
   var pvTimer = null;
@@ -461,7 +493,9 @@
     $('entryTitle').textContent = 'Log a day'; $('saveBtn').textContent = 'Save day';
     $('cancelBtn').classList.add('hidden'); $('deleteBtn').classList.add('hidden');
     $('entryCard').classList.remove('editing'); $('formErr').textContent = '';
+    S.actEdit = null;
     disarmDelete();
+    loadActivity($('fDate').value);
     updateRoutePreview(); updateOdoNote(); renderEntries();
   }
   function defaultDate() {
@@ -493,7 +527,20 @@
     $('cancelBtn').classList.remove('hidden'); $('deleteBtn').classList.remove('hidden');
     $('entryCard').classList.add('editing'); $('formErr').textContent = '';
     disarmDelete();
+    loadActivity(t.date);
     updateRoutePreview(); updateOdoNote(); renderEntries();
+    $('entryCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  // A day with activity but no driving: same form, nothing in the route or odometer.
+  function startEditActivity(date) {
+    resetForm();
+    S.actEdit = date;
+    $('fDate').value = date; loadActivity(date);
+    $('entryTitle').textContent = 'Activity on ' + MF.shortDate(date);
+    $('saveBtn').textContent = 'Save changes';
+    $('cancelBtn').classList.remove('hidden'); $('deleteBtn').classList.remove('hidden');
+    $('entryCard').classList.add('editing');
+    updateOdoNote(); renderEntries();
     $('entryCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   $('cancelBtn').onclick = resetForm;
@@ -507,6 +554,14 @@
       return;
     }
     disarmDelete();
+    if (S.actEdit) {
+      var day = S.actEdit;
+      writeActivity(ymOf(day), function (m) { setDayActivity(m, day, null); })
+        .then(function () { toast('Removed activity for ' + MF.shortDate(day)); renderAll(); })
+        .catch(writeFailed);
+      resetForm(); renderAll();
+      return;
+    }
     var id = S.editId, key = S.view, t = trips(key).filter(function (x) { return x.id === id; })[0];
     if (!t) return;
     writeMonth(key, function (m) { m.trips = (m.trips || []).filter(function (x) { return x.id !== id; }); })
@@ -521,6 +576,17 @@
     var home = settings().home.toUpperCase();
     var real = stops.filter(function (p) { return p.toUpperCase() !== home; });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { err.textContent = 'Pick the date.'; return; }
+    var actCounts = actOn() && S.act ? AR.clean(S.act.counts) : null;
+    if (actOn() && !S.editId && !real.length && !$('fRoute').value.trim() && !odo) {
+      var had = AR.count(dayActivity(date)) > 0;
+      if (!Object.keys(actCounts).length && !had) { err.textContent = 'Add where you went and the odometer, or tap the activity you did.'; return; }
+      writeActivity(ymOf(date), function (m) { setDayActivity(m, date, actCounts); }).then(function () {
+        toast(Object.keys(actCounts).length ? 'Saved activity for ' + MF.shortDate(date) : 'Removed activity for ' + MF.shortDate(date));
+        if (S.view !== ymOf(date)) S.view = ymOf(date);
+        resetForm(); renderAll();
+      }).catch(writeFailed);
+      return;
+    }
     if (!real.length && !$('fRoute').value.trim()) { err.textContent = 'Add where you went, e.g. W, JHH.'; return; }
     if (!odo) { err.textContent = 'Add the ending odometer (type it or read it from a photo).'; return; }
     if (S.photo && S.photo.busy) { err.textContent = 'Still reading the photo. One moment, or tap Stop and type it.'; return; }
@@ -542,6 +608,7 @@
       m.trips = (m.trips || []).filter(function (x) { return x.id !== trip.id; });
       m.trips.push(trip);
     }));
+    if (actCounts) jobs.push(writeActivity(key, function (m) { setDayActivity(m, date, actCounts); }));
     Promise.all(jobs).then(function () {
       addNewPlaces(real);
       toast((editing ? 'Updated ' : 'Saved ') + MF.shortDate(date) + ' · ' + fmt(+odo));
@@ -577,6 +644,186 @@
     if (!add.length) return;
     saveSettings({ places: s.places.concat(add) }).catch(function () {});
   }
+
+  /* ------------------------------------------------------------- activity */
+  // Monthly activity report (MIEMSS coordinators & associates): counts per day, added up
+  // for the month. On only when turned on in Settings (on by default on a personal link).
+  function actOn() { return !!(AR && settings().actOn); }
+  function monthActivity(key) { var m = S.months[key]; return (m && m.activity) || {}; }
+  function monthNotes(key) { var m = S.months[key]; return (m && m.notes) || {}; }
+  function dayActivity(date) { return monthActivity(ymOf(date))[date] || {}; }
+  function itemLabel(k) {
+    var it = AR.item(k), p = it.phrase.charAt(0).toUpperCase() + it.phrase.slice(1);
+    return /(visit|meeting|inspection|assist)$/.test(it.phrase) ? p + 's' : p;
+  }
+  function loadActivity(date) {
+    S.act = { date: date, counts: AR ? AR.clean(dayActivity(date)) : {}, dirty: false };
+    renderActBox();
+  }
+  function syncActivityDate() {   // the box always belongs to the date in the form
+    var d = $('fDate').value;
+    if (!S.act || S.act.date === d) return;
+    if (S.act.dirty) { S.act.date = d; renderActBox(); } else loadActivity(d);
+  }
+  $('fDate').addEventListener('input', syncActivityDate);
+  $('fDate').addEventListener('change', syncActivityDate);
+  var focusKey = null;
+  function renderActBox() {
+    var box = $('actBox');
+    if (!actOn()) { box.classList.add('hidden'); return; }
+    if (!S.act) S.act = { date: $('fDate').value, counts: AR.clean(dayActivity($('fDate').value)), dirty: false };
+    box.classList.remove('hidden');
+    var c = S.act.counts, collapsed = !!S.meta.actCollapsed, total = AR.count(c);
+    $('actTitle').textContent = 'Activity this day' + (total ? ' (' + total + ')' : '');
+    $('actToggle').textContent = collapsed ? 'Show all' : 'Hide';
+    $('actGroups').innerHTML = AR.GROUPS.map(function (g) {
+      var picked = g.items.filter(function (a) { return c[a[0]]; });
+      if (collapsed && !picked.length) return '';
+      var chips = collapsed ? '' : '<div class="chips">' + g.items.map(function (a) {
+        var v = c[a[0]];
+        return '<button type="button" class="chip act' + (v ? ' on' : '') + '" data-k="' + a[0] + '" aria-pressed="' + (v ? 'true' : 'false') + '">' +
+          esc(a[1]) + (v ? '<span class="n">' + v + '</span>' : '') + '</button>';
+      }).join('') + '</div>';
+      var boxes = picked.map(function (a) {
+        var k = a[0], lbl = itemLabel(k);
+        return '<div class="cnt" data-k="' + k + '"><span>' + esc(lbl) + '</span>' +
+          '<button type="button" class="step" data-d="-1" aria-label="One fewer ' + esc(lbl) + '">&minus;</button>' +
+          '<input type="text" inputmode="numeric" pattern="[0-9]*" value="' + c[k] + '" aria-label="How many ' + esc(lbl) + '">' +
+          '<button type="button" class="step" data-d="1" aria-label="One more ' + esc(lbl) + '">+</button>' +
+          '<button type="button" class="linkbtn rm">Remove</button></div>';
+      }).join('');
+      return '<div class="actgroup"><div class="gt">' + esc(g.title) + '</div>' + chips + boxes + '</div>';
+    }).join('');
+    var showLink = collapsed && !total;
+    $('actCollapsed').classList.toggle('hidden', !showLink);
+    $('actCollapsed').innerHTML = showLink ? 'Nothing added for this day. <button class="linkbtn" type="button" id="actShow">Add activity</button>' : '';
+    if (showLink) $('actShow').onclick = function () { saveMeta({ actCollapsed: false }).catch(function () {}); renderActBox(); };
+    if (focusKey) {
+      var inp = document.querySelector('.cnt[data-k="' + focusKey + '"] input'); focusKey = null;
+      if (inp) { inp.focus(); inp.select(); }
+    }
+  }
+  function setCount(k, v) {
+    v = Math.max(0, Math.min(99, parseInt(v, 10) || 0));
+    if (v) S.act.counts[k] = v; else delete S.act.counts[k];
+    S.act.dirty = true; renderActBox();
+  }
+  $('actToggle').onclick = function () { saveMeta({ actCollapsed: !S.meta.actCollapsed }).catch(function () {}); renderActBox(); };
+  $('actGroups').addEventListener('click', function (e) {
+    var chip = e.target.closest('.chip.act');
+    if (chip) {
+      var k = chip.getAttribute('data-k');
+      if (S.act.counts[k]) { focusKey = k; renderActBox(); }   // already added: go to its count
+      else setCount(k, 1);                                        // first tap: add one
+      return;
+    }
+    var row = e.target.closest('.cnt'); if (!row) return;
+    var key = row.getAttribute('data-k'), step = e.target.closest('.step');
+    if (step) setCount(key, (S.act.counts[key] || 0) + (+step.getAttribute('data-d')));
+    else if (e.target.closest('.rm')) setCount(key, 0);
+  });
+  $('actGroups').addEventListener('input', function (e) {
+    var row = e.target.closest('.cnt'); if (!row || e.target.tagName !== 'INPUT') return;
+    var v = digits(e.target.value).slice(0, 2), k = row.getAttribute('data-k');
+    e.target.value = v;
+    if (v === '' || +v === 0) return;   // finish typing; empty or 0 removes it when you leave the box
+    S.act.counts[k] = +v; S.act.dirty = true;
+    var chip = document.querySelector('.chip.act[data-k="' + k + '"] .n');
+    if (chip) chip.textContent = v;
+    $('actTitle').textContent = 'Activity this day (' + AR.count(S.act.counts) + ')';
+  });
+  $('actGroups').addEventListener('focusout', function (e) {
+    var row = e.target.closest('.cnt'); if (!row || e.target.tagName !== 'INPUT') return;
+    var v = digits(e.target.value);
+    if (v === '' || +v === 0) setCount(row.getAttribute('data-k'), 0);
+  });
+
+  // The month's report: totals, notes, email, PDF and the Smartsheet form.
+  function renderActCard() {
+    var card = $('actCard');
+    if (!actOn()) { card.classList.add('hidden'); return; }
+    card.classList.remove('hidden');
+    var key = S.view, t = AR.totals(monthActivity(key)), mname = MF.monthLabel(key).split(' ')[0];
+    $('actCardMonth').textContent = MF.monthLabel(key);
+    $('actTotals').innerHTML = Object.keys(t).length ? AR.GROUPS.map(function (g) {
+      var rows = g.items.filter(function (a) { return t[a[0]]; });
+      return rows.length ? '<div class="tg"><b>' + esc(g.title) + '</b>' + rows.map(function (a) {
+        return '<div class="tr"><span>' + esc(itemLabel(a[0])) + '</span><span>' + t[a[0]] + '</span></div>';
+      }).join('') + '</div>' : '';
+    }).join('') + '<p class="note">Everything else is 0 for ' + esc(mname) + '.</p>' :
+      '<p class="note">No activity logged for ' + esc(MF.monthLabel(key)) + ' yet. Tap what you did when you log each day.</p>';
+    var n = monthNotes(key);
+    if (document.activeElement !== $('nAssisting')) $('nAssisting').value = n.assisting || '';
+    if (document.activeElement !== $('nProjects')) $('nProjects').value = n.projects || '';
+    prepActPdf();
+  }
+  var noteTimer = null;
+  function saveNotes() {
+    var key = S.view, patch = { assisting: $('nAssisting').value, projects: $('nProjects').value };
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(function () {
+      writeActivity(key, function (m) { m.notes = Object.assign({}, m.notes, patch); }).then(prepActPdf).catch(writeFailed);
+    }, 500);
+  }
+  $('nAssisting').addEventListener('input', saveNotes);
+  $('nProjects').addEventListener('input', saveNotes);
+  function actInfo(key) {
+    var s = settings(), byDate = monthActivity(key), t = AR.totals(byDate);
+    var days = Object.keys(byDate).filter(function (d) { return AR.count(byDate[d]); }).sort();
+    return {
+      month: MF.monthLabel(key), name: titleCase(s.driverName), vehicle: [s.licenseTag, s.vehicle].filter(Boolean).join(', '),
+      totals: t, notes: monthNotes(key), generated: 'made ' + new Date().toLocaleDateString('en-US'),
+      link: AR.formLink(s.actForm, t, monthNotes(key)),
+      days: days.map(function (d) {
+        var dt = new Date(d + 'T12:00:00');
+        return { date: d, label: DOW[dt.getDay()] + ' ' + MF.shortDate(d), counts: byDate[d],
+          route: trips(key).filter(function (x) { return x.date === d; }).map(function (x) { return (x.route || []).join(' \u203a '); }).join('; ') };
+      })
+    };
+  }
+  function actSubject(key) { var s = settings(); return 'MIEMSS Activity Report – ' + MF.monthLabel(key) + (s.driverName ? ' – ' + titleCase(s.driverName) : ''); }
+  function actPdfName(key) { return 'Activity Report - ' + MF.monthLabel(key) + (settings().driverName ? ' - ' + titleCase(settings().driverName).replace(/[^\w .-]/g, '') : '') + '.pdf'; }
+  var actFile = { stamp: null, file: null }, actPrepT = null;
+  function actStamp(key) { return [key, JSON.stringify(monthActivity(key)), JSON.stringify(monthNotes(key)), headerKey(), settings().actForm].join('|'); }
+  function prepActPdf() {
+    clearTimeout(actPrepT);
+    return new Promise(function (resolve, reject) {
+      actPrepT = setTimeout(function () {
+        var key = S.view, st = actStamp(key);
+        if (actFile.stamp === st && actFile.file) { resolve(actFile.file); return; }
+        if (!window.PDFLib || !actOn()) { resolve(null); return; }
+        AR.buildPdf(window.PDFLib, actInfo(key)).then(function (bytes) {
+          actFile = { stamp: st, file: new File([bytes], actPdfName(key), { type: 'application/pdf' }) };
+          resolve(actFile.file);
+        }, reject);
+      }, 250);
+    });
+  }
+  $('actEmail').onclick = function () {
+    var key = S.view, s = settings(), to = s.actEmail.replace(/\s+/g, '');
+    var url = 'mailto:' + to + '?subject=' + encodeURIComponent(actSubject(key)) + '&body=' + encodeURIComponent(AR.emailText(actInfo(key)));
+    window.__lastMailto = url;   // lets the automated tests read it
+    location.href = url;
+    setStatus('actStatus', to ? 'Your email app opens with the summary. Tap Send.' :
+      'Your email app opens with the summary. Add your address in To, or set it in Settings so it fills in next time.', 'ok');
+  };
+  $('actForm').onclick = function () {
+    var link = actInfo(S.view).link;
+    if (!link) { setStatus('actStatus', 'Add your Smartsheet form link in Settings, under Monthly activity report.', 'err'); return; }
+    window.open(link, '_blank', 'noopener');
+    setStatus('actStatus', 'The form opens with your numbers filled in. Check them, fill in anything else, and submit.', 'ok');
+  };
+  $('actPdf').onclick = function () {
+    var key = S.view;
+    if (!actFile.file || actFile.stamp !== actStamp(key)) {
+      setStatus('actStatus', '<span class="spin"></span> Getting the PDF ready…');
+      prepActPdf().then(function () { setStatus('actStatus', 'Ready. Tap Send PDF again.'); }, function () { setStatus('actStatus', 'Couldn’t build the PDF.', 'err'); });
+      return;
+    }
+    deliver(actFile.file, actSubject(key), AR.emailText(actInfo(key))).then(function (h) {
+      setStatus('actStatus', h === 'downloaded' ? 'PDF downloaded.' : '', h === 'downloaded' ? 'ok' : '');
+    }).catch(function () { setStatus('actStatus', 'Couldn’t open the share menu. Tap Send PDF again.', 'err'); });
+  };
 
   /* ------------------------------------------------------ review & sign */
   function titleCase(x) { return String(x || '').toLowerCase().replace(/(^|[\s.'-])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }); }
@@ -864,7 +1111,7 @@
       return;
     }
     if (t.date !== cur) {
-      $('fDate').value = t.date; updateOdoNote();
+      $('fDate').value = t.date; updateOdoNote(); syncActivityDate();
       show('Dated <b>' + MF.shortDate(t.date) + '</b> from the photo, taken ' + when + src + '.' + lateNote);
     } else if (late) show('Photo taken ' + when + '.' + lateNote);
     else el.classList.add('hidden');
@@ -1034,8 +1281,31 @@
     $('sDriverName').value = s.driverName; $('sDriverShort').value = s.driverShort; $('sTag').value = s.licenseTag;
     $('sVehicle').value = s.vehicle; $('sBudget').value = s.budgetCode; $('sCommute').value = s.defaultCommute;
     $('sHome').value = s.home; $('sSendTo').value = s.sendTo;
-    renderPlaces();
+    renderPlaces(); fillActSettings();
   }
+  function fillActSettings() {
+    var s = settings();
+    $('sActOn').checked = s.actOn;
+    $('sActMore').classList.toggle('hidden', !s.actOn);
+    if (document.activeElement !== $('sActEmail')) $('sActEmail').value = s.actEmail;
+    if (document.activeElement !== $('sActForm')) $('sActForm').value = s.actForm;
+  }
+  $('sActOn').addEventListener('change', function () {
+    var on = this.checked;
+    saveSettings({ activity: on }).then(function () {
+      fillActSettings(); renderAll();
+      setStatus('sActStatus', on ? 'On. The activity buttons are under Commute miles when you log a day.' : 'Off. Anything you logged is kept.', 'ok');
+    }, function () { setStatus('sActStatus', 'Could not save. Try again.', 'err'); });
+  });
+  $('sActEmail').addEventListener('change', function () {
+    var v = cleanTo(this.value);
+    saveSettings({ actEmail: v }).then(function () { setStatus('sActStatus', 'Saved.', 'ok'); });
+  });
+  $('sActForm').addEventListener('change', function () {
+    var v = this.value.trim();
+    if (v && !/^https:\/\/[^\s]+$/i.test(v)) { setStatus('sActStatus', 'That doesn’t look like a web address. Copy the form’s link from your browser’s address bar.', 'err'); return; }
+    saveSettings({ actForm: v }).then(function () { setStatus('sActStatus', v ? 'Saved. Open Smartsheet form fills it in from now on.' : 'Removed.', 'ok'); renderActCard(); });
+  });
   function renderPlaces() {
     var s = settings();
     $('placeList').innerHTML = s.places.length ? s.places.map(function (p, i) {
@@ -1078,7 +1348,7 @@
       defaultCommute: c === '' ? '' : +c, home: $('sHome').value.trim() || 'H', sendTo: cleanTo($('sSendTo').value)
     }, 'Saved. The form updates to match.');
   };
-  $('settingsCard').addEventListener('toggle', function () { if (this.open) { fillSettings(); renderBackupNote(); renderOffline(); } });
+  $('settingsCard').addEventListener('toggle', function () { if (this.open) { fillSettings(); fillActSettings(); renderBackupNote(); renderOffline(); } });
 
   /* --------------------------------------------------------------- offline */
   // The service worker keeps the app on the phone; the photo reader (about 7 MB) is saved
