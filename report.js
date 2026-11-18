@@ -101,6 +101,7 @@
     });
     var hash = '', i = base.indexOf('#');
     if (i >= 0) { hash = base.slice(i); base = base.slice(0, i); }
+    base = base.replace(/[?&]+$/, '');   // a copied link often ends in "?"
     return base + (base.indexOf('?') >= 0 ? '&' : '?') + parts.join('&') + hash;
   }
 

@@ -1,7 +1,7 @@
 /* Offline-first, for the personal setup page (me/). Same approach as ../sw.js: the app
    opens from the copy saved on the phone; updates download in the background.
    RELEASES: bump VERSION here and in ../sw.js whenever any app file changes. */
-var VERSION = '2026-11-18.1';
+var VERSION = '2026-11-18.2';
 var SHELL_CACHE = 'mileage-log-me-shell-' + VERSION;
 var READER_CACHE = 'mileage-log-reader-v7';   // tied to the Tesseract.js version in vendor/tesseract
 var SHELL = ['./', './index.html', './me.js', './manifest.webmanifest', '../app.js', '../ocr.js', '../report.js', '../form.js', '../reminder.ics',

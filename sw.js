@@ -3,7 +3,7 @@
    the next time the app opens. The photo reader is kept in its own cache, so it works
    offline too and isn't downloaded again with every update.
    RELEASES: bump VERSION here (and in me/sw.js) whenever any app file changes. */
-var VERSION = '2026-11-18.1';
+var VERSION = '2026-11-18.2';
 var SHELL_CACHE = 'mileage-log-shell-' + VERSION;
 var READER_CACHE = 'mileage-log-reader-v7';   // tied to the Tesseract.js version in vendor/tesseract
 var SHELL = ['./', './index.html', './app.js', './ocr.js', './report.js', './form.js', './manifest.webmanifest', './reminder.ics',
